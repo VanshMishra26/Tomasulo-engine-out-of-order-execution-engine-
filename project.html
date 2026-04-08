@@ -1,0 +1,1420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tomasulo Out-of-Order Execution Simulator</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg0: #020810;
+  --bg1: #050f1c;
+  --bg2: #081525;
+  --panel: rgba(6,16,32,0.88);
+  --border: rgba(0,180,255,0.12);
+  --border-hi: rgba(0,200,255,0.4);
+  --cyan: #00c8ff;
+  --cyan-dim: rgba(0,200,255,0.15);
+  --orange: #ff7235;
+  --orange-dim: rgba(255,114,53,0.15);
+  --green: #00ff88;
+  --green-dim: rgba(0,255,136,0.12);
+  --gold: #ffd54f;
+  --gold-dim: rgba(255,213,79,0.12);
+  --red: #ff3d6b;
+  --red-dim: rgba(255,61,107,0.12);
+  --violet: #a78bff;
+  --text: #cce4f7;
+  --text-dim: #4a6a84;
+  --mono: 'Share Tech Mono', monospace;
+  --disp: 'Orbitron', sans-serif;
+  --ui: 'Rajdhani', sans-serif;
+  --hdr-bg: rgba(2,8,16,.95);
+  --scrollbar-thumb: rgba(0,200,255,.25);
+  --iq-inp-bg: rgba(0,0,0,.5);
+  --reg-cell-bg: rgba(0,0,0,.3);
+  --tooltip-bg: rgba(2,8,16,.96);
+  --grid-line: rgba(0,200,255,.025);
+}
+
+[data-theme="light"] {
+  --bg0: #e8f0f8;
+  --bg1: #dce8f4;
+  --bg2: #cfdff0;
+  --panel: rgba(255,255,255,0.85);
+  --border: rgba(0,120,200,0.18);
+  --border-hi: rgba(0,140,220,0.5);
+  --cyan: #0077cc;
+  --cyan-dim: rgba(0,119,204,0.12);
+  --orange: #d95f00;
+  --orange-dim: rgba(217,95,0,0.12);
+  --green: #008844;
+  --green-dim: rgba(0,136,68,0.1);
+  --gold: #b07800;
+  --gold-dim: rgba(176,120,0,0.1);
+  --red: #cc1144;
+  --red-dim: rgba(204,17,68,0.1);
+  --violet: #6633cc;
+  --text: #1a2a3a;
+  --text-dim: #6a8aaa;
+  --hdr-bg: rgba(220,232,248,.97);
+  --scrollbar-thumb: rgba(0,119,204,.3);
+  --iq-inp-bg: rgba(255,255,255,.8);
+  --reg-cell-bg: rgba(240,248,255,.8);
+  --tooltip-bg: rgba(240,248,255,.97);
+  --grid-line: rgba(0,100,180,.04);
+}
+
+*{margin:0;padding:0;box-sizing:border-box}
+
+html,body{height:100%;overflow:hidden}
+
+body{
+  background:var(--bg0);
+  color:var(--text);
+  font-family:var(--mono);
+  display:flex;
+  flex-direction:column;
+}
+
+/* Animated grid background */
+body::before{
+  content:'';
+  position:fixed;
+  inset:0;
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg,var(--grid-line) 1px,transparent 1px);
+  background-size:48px 48px;
+  animation:gridDrift 40s linear infinite;
+  pointer-events:none;
+  z-index:0;
+}
+
+@keyframes gridDrift{
+  0%{background-position:0 0}
+  100%{background-position:48px 48px}
+}
+
+/* ── HEADER ── */
+#hdr{
+  position:relative;z-index:10;
+  background:var(--hdr-bg);
+  border-bottom:1px solid var(--border);
+  padding:8px 14px;
+  display:flex;align-items:center;gap:14px;
+  flex-shrink:0;
+}
+
+#hdr h1{
+  font-family:var(--disp);
+  font-size:15px;font-weight:900;
+  letter-spacing:4px;
+  background:linear-gradient(135deg,var(--cyan),#0060ff 60%,var(--violet));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  white-space:nowrap;
+}
+#hdr .sub{
+  font-size:9px;letter-spacing:2.5px;
+  color:var(--text-dim);font-family:var(--ui);
+  white-space:nowrap;
+}
+
+#cycle-box{
+  font-family:var(--disp);
+  font-size:22px;font-weight:900;
+  color:var(--gold);
+  text-shadow:0 0 18px rgba(255,213,79,.45);
+  min-width:80px;
+  white-space:nowrap;
+}
+
+.ctrl-grp{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+
+.btn{
+  font-family:var(--disp);
+  font-size:9px;letter-spacing:1.5px;
+  padding:5px 12px;
+  border:1px solid;border-radius:4px;
+  background:transparent;cursor:pointer;
+  transition:all .18s;white-space:nowrap;
+  text-transform:uppercase;
+}
+.btn:disabled{opacity:.35;cursor:default}
+.btn-c{border-color:var(--cyan);color:var(--cyan);}
+.btn-c:hover:not(:disabled){background:var(--cyan-dim);box-shadow:0 0 12px rgba(0,200,255,.3);}
+.btn-g{border-color:var(--green);color:var(--green);}
+.btn-g:hover:not(:disabled){background:var(--green-dim);box-shadow:0 0 12px rgba(0,255,136,.3);}
+.btn-r{border-color:var(--red);color:var(--red);}
+.btn-r:hover:not(:disabled){background:var(--red-dim);}
+.btn-o{border-color:var(--orange);color:var(--orange);}
+.btn-o:hover:not(:disabled){background:var(--orange-dim);}
+
+.speed-wrap{display:flex;align-items:center;gap:5px;font-size:9px;color:var(--text-dim);}
+input[type=range]{
+  -webkit-appearance:none;width:70px;height:3px;
+  background:rgba(0,200,255,.25);outline:none;border-radius:2px;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:11px;height:11px;
+  border-radius:50%;background:var(--cyan);cursor:pointer;
+  box-shadow:0 0 7px var(--cyan);
+}
+
+.status-strip{
+  margin-left:auto;
+  display:flex;gap:12px;align-items:center;
+  font-size:10px;
+}
+.stat{display:flex;gap:4px;align-items:center;color:var(--text-dim);}
+.stat b{color:var(--text);font-weight:normal;}
+
+/* ── MAIN LAYOUT ── */
+#main{
+  position:relative;z-index:1;
+  flex:1;overflow:hidden;
+  display:grid;
+  grid-template-columns:1fr 1fr 310px;
+  grid-template-rows:auto 1fr 1fr auto;
+  gap:8px;padding:8px;
+}
+
+/* ── PANEL ── */
+.panel{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:6px;
+  backdrop-filter:blur(14px);
+  padding:10px 12px;
+  position:relative;overflow:hidden;
+  display:flex;flex-direction:column;
+  min-height:0;
+}
+.panel::before{
+  content:'';position:absolute;
+  top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--cyan),transparent);
+  opacity:.3;
+}
+
+.ptitle{
+  font-family:var(--disp);
+  font-size:8.5px;letter-spacing:2.5px;
+  color:var(--cyan);text-transform:uppercase;
+  margin-bottom:8px;flex-shrink:0;
+  display:flex;align-items:center;gap:6px;
+}
+.ptitle .badge{
+  font-size:8px;padding:1px 5px;
+  border:1px solid currentColor;
+  border-radius:3px;opacity:.6;
+  letter-spacing:1px;
+}
+
+/* ── INSTRUCTION QUEUE ── */
+#iq-panel{grid-column:1/-1;grid-row:1;max-height:110px;}
+
+#iq-list{
+  display:flex;gap:5px;flex-wrap:wrap;
+  overflow-y:auto;max-height:46px;
+  margin-bottom:6px;flex-shrink:0;
+}
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-track{background:rgba(0,0,0,.2)}
+::-webkit-scrollbar-thumb{background:var(--scrollbar-thumb);border-radius:2px}
+
+.iq-chip{
+  display:flex;align-items:center;gap:4px;
+  padding:3px 8px;
+  border:1px solid rgba(0,200,255,.18);
+  border-radius:4px;
+  font-size:11px;
+  background:rgba(0,200,255,.04);
+  transition:all .25s;
+  white-space:nowrap;
+  position:relative;
+}
+.iq-chip.dep{border-color:rgba(255,114,53,.45);background:rgba(255,114,53,.07);}
+.iq-chip.next{border-color:var(--cyan);background:rgba(0,200,255,.12);box-shadow:0 0 8px rgba(0,200,255,.2);}
+.iq-chip.done{opacity:.28;border-color:rgba(0,255,136,.15);}
+.iq-chip.issuing{animation:chipIssue .4s ease;}
+@keyframes chipIssue{
+  0%{transform:scale(1)}50%{transform:scale(1.07);box-shadow:0 0 16px rgba(0,200,255,.5)}100%{transform:scale(1)}
+}
+.iq-idx{font-size:9px;color:var(--text-dim);min-width:14px;}
+.iq-op{font-size:11px;}
+.iq-dep-badge{font-size:8px;color:var(--orange);letter-spacing:.5px;}
+.iq-del{
+  background:none;border:none;color:var(--red);
+  cursor:pointer;font-size:13px;line-height:1;
+  opacity:.4;transition:opacity .15s;padding:0 1px;
+}
+.iq-del:hover{opacity:1;}
+
+.iq-add-row{display:flex;gap:5px;align-items:center;flex-shrink:0;}
+.iq-inp{
+  background:var(--iq-inp-bg);
+  border:1px solid rgba(0,200,255,.18);
+  border-radius:4px;
+  color:var(--text);font-family:var(--mono);font-size:11px;
+  padding:4px 9px;outline:none;width:190px;
+}
+.iq-inp:focus{border-color:var(--cyan);box-shadow:0 0 8px rgba(0,200,255,.18);}
+.iq-inp::placeholder{color:var(--text-dim);}
+
+/* ── RS TABLE ── */
+#rs-panel{grid-column:1;grid-row:2/4;overflow-y:auto;}
+.rs-group{margin-bottom:10px;}
+.rs-group-title{
+  font-family:var(--disp);font-size:8px;
+  letter-spacing:2px;color:var(--text-dim);
+  margin-bottom:4px;padding-left:2px;
+  text-transform:uppercase;
+}
+
+.tbl{width:100%;border-collapse:collapse;font-size:10.5px;}
+.tbl th{
+  font-family:var(--disp);font-size:7.5px;
+  letter-spacing:1.5px;color:var(--text-dim);
+  padding:3px 5px;text-align:left;
+  border-bottom:1px solid rgba(0,200,255,.08);
+  white-space:nowrap;
+}
+.tbl td{
+  padding:3px 5px;
+  border-bottom:1px solid rgba(255,255,255,.025);
+  font-family:var(--mono);font-size:10px;
+  transition:color .3s;white-space:nowrap;
+}
+.tbl tr.idle td{color:var(--text-dim);}
+.tbl tr.waiting td{color:var(--orange);}
+.tbl tr.executing td{color:var(--cyan);}
+.tbl tr.completed td{color:var(--green);}
+
+.sdot{
+  display:inline-block;width:5px;height:5px;
+  border-radius:50%;margin-right:4px;
+  vertical-align:middle;
+}
+.sdot.idle{background:var(--text-dim);}
+.sdot.waiting{background:var(--orange);box-shadow:0 0 5px var(--orange);}
+.sdot.executing{background:var(--cyan);box-shadow:0 0 5px var(--cyan);animation:blink 1s infinite;}
+.sdot.completed{background:var(--green);box-shadow:0 0 5px var(--green);}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ── REGISTER FILE ── */
+#reg-panel{grid-column:2;grid-row:2;overflow-y:auto;}
+.reg-grid{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:3px;
+}
+.reg-cell{
+  padding:5px 6px;
+  border:1px solid rgba(0,200,255,.1);
+  border-radius:3px;
+  background:var(--reg-cell-bg);
+  transition:all .3s;
+  cursor:default;
+}
+.reg-cell.renamed{border-color:rgba(255,114,53,.5);background:rgba(255,114,53,.08);}
+.reg-cell.written{border-color:var(--green);background:rgba(0,255,136,.1);animation:writeFlash .5s ease;}
+@keyframes writeFlash{0%{box-shadow:0 0 0 rgba(0,255,136,0)}50%{box-shadow:0 0 14px rgba(0,255,136,.5)}100%{box-shadow:0 0 0}}
+.rname{font-family:var(--disp);font-size:8px;color:var(--text-dim);letter-spacing:.8px;}
+.rval{font-size:11px;color:var(--text);margin-top:1px;}
+.rqi{font-size:8.5px;color:var(--orange);margin-top:1px;}
+
+/* ── PIPELINE FLOW ── */
+#pipe-panel{grid-column:2;grid-row:3;overflow-y:auto;}
+.pipe-stages{display:flex;align-items:flex-start;gap:4px;margin-bottom:8px;}
+.pipe-stage{flex:1;min-width:0;}
+.pstage-lbl{
+  font-family:var(--disp);font-size:7.5px;letter-spacing:1.5px;
+  color:var(--text-dim);text-align:center;margin-bottom:3px;
+  text-transform:uppercase;
+}
+.pstage-tokens{min-height:22px;display:flex;flex-wrap:wrap;gap:2px;justify-content:center;}
+.ptok{
+  padding:2px 5px;border-radius:3px;font-size:8.5px;
+  white-space:nowrap;transition:all .3s;
+  font-family:var(--mono);
+}
+.ptok.issue{background:rgba(0,200,255,.15);border:1px solid var(--cyan);color:var(--cyan);}
+.ptok.executing{background:rgba(255,114,53,.15);border:1px solid var(--orange);color:var(--orange);}
+.ptok.written{background:rgba(255,213,79,.15);border:1px solid var(--gold);color:var(--gold);}
+.ptok.committed{background:rgba(0,255,136,.12);border:1px solid var(--green);color:var(--green);}
+.parrow{font-size:14px;color:rgba(0,200,255,.25);margin-top:12px;}
+
+/* CDB */
+.cdb-row{
+  display:flex;align-items:center;gap:8px;
+  padding:5px 10px;
+  background:rgba(255,213,79,.04);
+  border:1px solid rgba(255,213,79,.15);
+  border-radius:4px;
+  margin-top:8px;flex-shrink:0;
+  transition:all .3s;
+}
+.cdb-lbl{
+  font-family:var(--disp);font-size:8px;letter-spacing:2px;
+  color:var(--gold);
+}
+.cdb-val{font-size:11px;color:var(--gold);}
+.cdb-row.active{
+  border-color:var(--gold);
+  background:rgba(255,213,79,.1);
+  box-shadow:0 0 16px rgba(255,213,79,.25);
+  animation:cdbPulse .6s ease;
+}
+@keyframes cdbPulse{
+  0%{box-shadow:0 0 0}
+  40%{box-shadow:0 0 22px rgba(255,213,79,.5)}
+  100%{box-shadow:0 0 14px rgba(255,213,79,.2)}
+}
+
+/* ── ROB ── */
+#rob-panel{grid-column:1/3;grid-row:4;max-height:130px;overflow-y:auto;}
+.head-tag{
+  display:inline-block;background:var(--green);color:#000;
+  font-family:var(--disp);font-size:7px;padding:1px 4px;
+  border-radius:2px;margin-left:4px;vertical-align:middle;
+}
+.tail-tag{
+  display:inline-block;background:var(--orange);color:#000;
+  font-family:var(--disp);font-size:7px;padding:1px 4px;
+  border-radius:2px;margin-left:4px;vertical-align:middle;
+}
+.tbl tr.rob-empty td{color:var(--text-dim);opacity:0.5;}
+.tbl tr.rob-issue td{color:var(--cyan);}
+.tbl tr.rob-execute td{color:var(--orange);}
+.tbl tr.rob-write td{color:var(--gold);}
+.tbl tr.rob-commit td{color:var(--green);animation:robCommit .5s ease;}
+@keyframes robCommit{0%{background:transparent}30%{background:rgba(0,255,136,.12)}100%{background:transparent}}
+
+/* ── DEPENDENCY GRAPH ── */
+#dep-panel{grid-column:3;grid-row:1/4;overflow:hidden;}
+#dep-svg{width:100%;flex:1;min-height:0;}
+
+/* ── LOG + AI ── */
+#log-panel{grid-column:3;grid-row:4;overflow-y:auto;max-height:130px;}
+.log-line{
+  font-size:10px;line-height:1.55;
+  border-bottom:1px solid rgba(255,255,255,.025);
+  padding:1px 0;
+  animation:logIn .25s ease;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+@keyframes logIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+.lc{font-size:9px;color:var(--gold);margin-right:4px;}
+.lt-cycle{color:var(--text-dim);}
+.lt-issue{color:var(--cyan);}
+.lt-execute{color:var(--orange);}
+.lt-write{color:var(--gold);}
+.lt-commit{color:var(--green);}
+.lt-stall{color:var(--red);}
+.lt-done{color:var(--violet);}
+
+/* ── AI PANEL ── */
+#ai-sub{margin-top:8px;border-top:1px solid rgba(167,139,255,.15);padding-top:8px;flex-shrink:0;}
+.ai-title{font-family:var(--disp);font-size:8px;letter-spacing:2px;color:var(--violet);margin-bottom:4px;}
+.ai-line{font-size:10px;color:rgba(167,139,255,.85);line-height:1.5;}
+
+/* ── TOOLTIP ── */
+[data-tip]{position:relative;cursor:help;}
+[data-tip]::after{
+  content:attr(data-tip);
+  position:absolute;bottom:calc(100% + 5px);left:50%;
+  transform:translateX(-50%);
+  background:var(--tooltip-bg);border:1px solid var(--cyan);
+  border-radius:4px;padding:6px 10px;
+  font-size:10px;font-family:var(--ui);color:var(--text);
+  width:180px;line-height:1.45;
+  pointer-events:none;opacity:0;
+  transition:opacity .2s;z-index:999;
+  white-space:normal;text-align:left;
+  letter-spacing:0;
+}
+[data-tip]:hover::after{opacity:1;}
+
+/* Glow accents */
+.glow-c{text-shadow:0 0 8px var(--cyan);}
+.glow-g{text-shadow:0 0 8px var(--green);}
+
+/* ── THEME TOGGLE ── */
+#themeToggle{
+  font-family:var(--disp);
+  font-size:9px;letter-spacing:1.5px;
+  padding:5px 10px;
+  border:1px solid var(--text-dim);
+  border-radius:4px;
+  background:transparent;
+  color:var(--text-dim);
+  cursor:pointer;
+  transition:all .2s;
+  text-transform:uppercase;
+  white-space:nowrap;
+}
+#themeToggle:hover{
+  border-color:var(--text);
+  color:var(--text);
+}
+</style>
+</head>
+<body>
+
+<!-- ══ HEADER ══ -->
+<div id="hdr">
+  <div>
+    <h1>TOMASULO ENGINE</h1>
+    <div class="sub">OUT-OF-ORDER EXECUTION SIMULATOR</div>
+  </div>
+
+  <div id="cycle-box">C:<span id="cyc">0</span></div>
+
+  <div class="ctrl-grp">
+    <button class="btn btn-g" id="btnRun">▶ RUN</button>
+    <button class="btn btn-c" id="btnStep">⬜ STEP</button>
+    <button class="btn btn-o" id="btnPause" disabled>⏸ PAUSE</button>
+    <button class="btn btn-r" id="btnReset">↺ RESET</button>
+  </div>
+  <div class="speed-wrap">
+    SPEED
+    <input type="range" id="speedSlider" min="1" max="10" value="5">
+    <span id="speedVal">5</span>
+  </div>
+
+  <div class="status-strip">
+    <div class="stat" data-tip="Instructions Per Cycle = committed / cycles elapsed">IPC <b id="sIPC">0.00</b></div>
+    <div class="stat">COMMITTED <b id="sCom">0</b></div>
+    <div class="stat">STALLS <b id="sStall">0</b></div>
+    <div class="stat">RS% <b id="sRS">0</b></div>
+    <div class="stat">ROB% <b id="sROB">0</b></div>
+  </div>
+  <button id="themeToggle" title="Toggle light/dark mode">☀ LIGHT</button>
+</div>
+
+<!-- ══ MAIN ══ -->
+<div id="main">
+
+  <!-- Instruction Queue -->
+  <section class="panel" id="iq-panel">
+    <div class="ptitle" data-tip="Instructions issue in-order but execute and commit out-of-order. Arrow shows next to issue.">
+      INSTRUCTION QUEUE
+      <span class="badge" id="iq-badge">0</span>
+    </div>
+    <div id="iq-list"></div>
+    <div class="iq-add-row">
+      <input class="iq-inp" id="iqInp" placeholder="ADD R1 R2 R3  |  MUL R4 R1 R5  |  LD R6 0(R7)">
+      <button class="btn btn-c" id="btnAdd">+ ADD</button>
+      <button class="btn btn-c" id="btnRand">⚄ RANDOM</button>
+      <button class="btn btn-c" id="btnExample">LOAD EXAMPLE</button>
+    </div>
+  </section>
+
+  <!-- Reservation Stations -->
+  <section class="panel" id="rs-panel">
+    <div class="ptitle" data-tip="RSes hold instructions waiting for operands. Qj/Qk=ROB tag means waiting for that result. When both are null and Vj/Vk are set, execution begins.">
+      RESERVATION STATIONS
+    </div>
+
+    <div class="rs-group">
+      <div class="rs-group-title">ADD / SUB UNITS</div>
+      <table class="tbl"><thead><tr>
+        <th>NAME</th><th>BUSY</th><th>OP</th><th>Vj</th><th>Vk</th><th>Qj</th><th>Qk</th><th>DEST</th><th>CYC</th>
+      </tr></thead><tbody id="rsAddBody"></tbody></table>
+    </div>
+
+    <div class="rs-group">
+      <div class="rs-group-title">MUL / DIV UNITS</div>
+      <table class="tbl"><thead><tr>
+        <th>NAME</th><th>BUSY</th><th>OP</th><th>Vj</th><th>Vk</th><th>Qj</th><th>Qk</th><th>DEST</th><th>CYC</th>
+      </tr></thead><tbody id="rsMulBody"></tbody></table>
+    </div>
+
+    <div class="rs-group">
+      <div class="rs-group-title">LOAD / STORE UNITS</div>
+      <table class="tbl"><thead><tr>
+        <th>NAME</th><th>BUSY</th><th>OP</th><th>Vj</th><th>Vk</th><th>Qj</th><th>Qk</th><th>DEST</th><th>CYC</th>
+      </tr></thead><tbody id="rsLSBody"></tbody></table>
+    </div>
+
+    <!-- CDB -->
+    <div class="cdb-row" id="cdbRow">
+      <span class="cdb-lbl" data-tip="Common Data Bus broadcasts results to all waiting reservation stations and ROB entries simultaneously, enabling data forwarding.">CDB</span>
+      <span class="cdb-val" id="cdbVal">IDLE</span>
+    </div>
+  </section>
+
+  <!-- Register File -->
+  <section class="panel" id="reg-panel">
+    <div class="ptitle" data-tip="Qi shows which ROB entry will write this register. Orange = renamed (pending). Green flash = just written.">
+      REGISTER FILE
+    </div>
+    <div class="reg-grid" id="regGrid"></div>
+  </section>
+
+  <!-- Pipeline Flow -->
+  <section class="panel" id="pipe-panel">
+    <div class="ptitle">PIPELINE FLOW</div>
+    <div class="pipe-stages">
+      <div class="pipe-stage">
+        <div class="pstage-lbl">ISSUE</div>
+        <div class="pstage-tokens" id="stgIssue"></div>
+      </div>
+      <div class="parrow">→</div>
+      <div class="pipe-stage">
+        <div class="pstage-lbl">EXECUTE</div>
+        <div class="pstage-tokens" id="stgExec"></div>
+      </div>
+      <div class="parrow">→</div>
+      <div class="pipe-stage">
+        <div class="pstage-lbl">WRITE</div>
+        <div class="pstage-tokens" id="stgWrite"></div>
+      </div>
+      <div class="parrow">→</div>
+      <div class="pipe-stage">
+        <div class="pstage-lbl">COMMIT</div>
+        <div class="pstage-tokens" id="stgCommit"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Dependency Graph -->
+  <section class="panel" id="dep-panel">
+    <div class="ptitle">DEPENDENCY GRAPH <span class="badge" style="color:var(--orange);border-color:var(--orange)">RAW</span></div>
+    <svg id="depSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div id="ai-sub">
+      <div class="ai-title">⚡ ADAPTIVE SCHEDULER</div>
+      <div id="aiLog"></div>
+    </div>
+  </section>
+
+  <!-- ROB -->
+  <section class="panel" id="rob-panel">
+    <div class="ptitle" data-tip="ROB enables in-order commit. Instructions commit only from HEAD. This ensures precise exceptions and correct architectural state even with out-of-order execution.">
+      REORDER BUFFER
+      <span id="robHead" style="font-size:8px;color:var(--green);margin-left:4px;"></span>
+    </div>
+    <table class="tbl" style="font-size:10px">
+      <thead><tr>
+        <th>ENTRY</th><th>BUSY</th><th>INSTRUCTION</th><th>DEST</th><th>VALUE</th><th>READY</th><th>STATE</th>
+      </tr></thead>
+      <tbody id="robBody"></tbody>
+    </table>
+  </section>
+
+  <!-- Log -->
+  <section class="panel" id="log-panel">
+    <div class="ptitle">EXECUTION LOG</div>
+    <div id="logLines"></div>
+  </section>
+
+</div><!-- /#main -->
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  TOMASULO ALGORITHM SIMULATOR  — Full Implementation
+// ═══════════════════════════════════════════════════════════════
+
+const CFG = {
+  RS_ADD: 3, RS_MUL: 2, RS_LOAD: 2, RS_STORE: 2,
+  ROB_SIZE: 8, NREGS: 16,
+  LAT: { ADD:2, SUB:2, MUL:4, DIV:6, LD:3, ST:3 }
+};
+
+// ── Helpers ────────────────────────────────────────────────────
+const el = id => document.getElementById(id);
+const ns = tag => document.createElementNS('http://www.w3.org/2000/svg', tag);
+const fmt = v => v === null || v === undefined ? '─' : String(v);
+
+// ── Instruction Parser ─────────────────────────────────────────
+function parse(raw) {
+  const s = raw.trim().replace(/,/g,' ').replace(/\s+/g,' ');
+  const p = s.split(' ');
+  const op = p[0].toUpperCase();
+
+  if (op === 'LD' || op === 'LOAD') {
+    const dest = p[1] ? p[1].toUpperCase() : 'R0';
+    const mem = p[2] || '0(R0)';
+    const m = mem.match(/(-?\d+)\((\w+)\)/);
+    const off = m ? parseInt(m[1]) : 0;
+    const base = m ? m[2].toUpperCase() : 'R0';
+    return { op:'LD', dest, src1:base, src2:null, base, offset:off };
+  }
+  if (op === 'ST' || op === 'STORE') {
+    const src = p[1] ? p[1].toUpperCase() : 'R0';
+    const mem = p[2] || '0(R0)';
+    const m = mem.match(/(-?\d+)\((\w+)\)/);
+    const off = m ? parseInt(m[1]) : 0;
+    const base = m ? m[2].toUpperCase() : 'R0';
+    return { op:'ST', dest:null, src1:src, src2:base, base, offset:off };
+  }
+  const dest = p[1] ? p[1].toUpperCase() : 'R0';
+  const src1 = p[2] ? p[2].toUpperCase() : 'R0';
+  const src2 = p[3] ? p[3].toUpperCase() : 'R0';
+  return { op, dest, src1, src2, base:null, offset:0 };
+}
+
+function rsTypeOf(op) {
+  if (op==='ADD'||op==='SUB') return 'ADD';
+  if (op==='MUL'||op==='DIV') return 'MUL';
+  if (op==='LD')  return 'LOAD';
+  if (op==='ST')  return 'STORE';
+  return 'ADD';
+}
+
+function compute(op, vj, vk, off, mem) {
+  const a = vj ?? 0, b = vk ?? 0;
+  switch(op) {
+    case 'ADD': return a + b;
+    case 'SUB': return a - b;
+    case 'MUL': return a * b;
+    case 'DIV': return b !== 0 ? Math.floor(a/b) : 0;
+    case 'LD':  { const addr = (a + (off??0)) & 0xFF; return mem[addr] ?? (addr % 100); }
+    case 'ST':  return a;
+    default:    return 0;
+  }
+}
+
+// ── State Factory ──────────────────────────────────────────────
+function makeState(rawInstrs) {
+  const makeRS = (prefix, count, type) =>
+    Array.from({length:count}, (_,i) => ({
+      name:`${prefix}${i+1}`, type, busy:false,
+      op:null, Vj:null, Vk:null, Qj:null, Qk:null,
+      dest:null, remaining:0, result:null,
+      status:'idle', instrIdx:-1, robTag:null
+    }));
+
+  const regs = {};
+  for (let i=0;i<CFG.NREGS;i++) regs[`R${i}`] = {value: (i===0?0:i*10), Qi:null};
+
+  const mem = {};
+  for (let i=0;i<256;i+=4) mem[i] = (i*3+7) % 127;
+
+  return {
+    cycle:0,
+    iq: rawInstrs.map((r,i) => ({
+      ...parse(r), raw:r, idx:i,
+      status:'queued',   // queued|issued|executing|written|committed
+      issueCyc:null, execCyc:null, writeCyc:null, commitCyc:null,
+      robTag:null
+    })),
+    iqPtr:0,
+    rs: {
+      ADD:  makeRS('ADD', CFG.RS_ADD,  'ADD'),
+      MUL:  makeRS('MUL', CFG.RS_MUL,  'MUL'),
+      LOAD: makeRS('LD',  CFG.RS_LOAD, 'LOAD'),
+      STORE:makeRS('ST',  CFG.RS_STORE,'STORE')
+    },
+    regs,
+    mem,
+    rob: {
+      buf: Array.from({length:CFG.ROB_SIZE}, (_,i) => ({
+        idx:i, busy:false, instr:null, dest:null,
+        value:null, ready:false, state:'empty'
+      })),
+      head:0, tail:0, cnt:0
+    },
+    cdb: {active:false, tag:null, value:null},
+    committed:0, stalls:0, done:false,
+    log:[], aiLog:[]
+  };
+}
+
+// ── ROB Utilities ──────────────────────────────────────────────
+function robAlloc(rob) {
+  if (rob.cnt >= CFG.ROB_SIZE) return -1;
+  const i = rob.tail;
+  rob.tail = (rob.tail+1) % CFG.ROB_SIZE;
+  rob.cnt++;
+  return i;
+}
+function robAdvHead(rob) {
+  rob.head = (rob.head+1) % CFG.ROB_SIZE;
+  rob.cnt--;
+}
+
+// ── Log ────────────────────────────────────────────────────────
+function log(s, msg, type='cycle') {
+  s.log.push({c:s.cycle, msg, type});
+  if (s.log.length>120) s.log.shift();
+}
+
+// ── ISSUE ──────────────────────────────────────────────────────
+function doIssue(s) {
+  if (s.iqPtr >= s.iq.length) return false;
+  const instr = s.iq[s.iqPtr];
+  const rsType = rsTypeOf(instr.op);
+  const frs = s.rs[rsType].find(r => !r.busy);
+  if (!frs) { s.stalls++; return false; }
+  const ri = robAlloc(s.rob);
+  if (ri === -1) { s.stalls++; return false; }
+
+  const rtag = `ROB${ri}`;
+  frs.busy = true; frs.op = instr.op;
+  frs.dest = rtag; frs.robTag = rtag;
+  frs.remaining = CFG.LAT[instr.op] ?? 2;
+  frs.status = 'waiting'; frs.instrIdx = s.iqPtr;
+
+  const readOp = (regName) => {
+    if (!regName || !s.regs[regName]) return {V:0, Q:null};
+    const r = s.regs[regName];
+    if (r.Qi === null) return {V:r.value, Q:null};
+    // Check CDB snapshot
+    if (s.cdb.active && s.cdb.tag === r.Qi) return {V:s.cdb.value, Q:null};
+    return {V:null, Q:r.Qi};
+  };
+
+  // src1 → Vj/Qj
+  if (instr.op === 'LD') {
+    // base → Vj, offset → Vk (immediate, no register)
+    const {V,Q} = readOp(instr.src1);
+    frs.Vj=V; frs.Qj=Q;
+    frs.Vk = instr.offset ?? 0; frs.Qk = null;
+  } else if (instr.op === 'ST') {
+    // src1=value reg → Vj, src2=base → Vk
+    const {V:V1,Q:Q1} = readOp(instr.src1);
+    const {V:V2,Q:Q2} = readOp(instr.src2);
+    frs.Vj=V1; frs.Qj=Q1;
+    frs.Vk=V2; frs.Qk=Q2;
+  } else {
+    const {V:V1,Q:Q1} = readOp(instr.src1);
+    const {V:V2,Q:Q2} = readOp(instr.src2);
+    frs.Vj=V1; frs.Qj=Q1;
+    frs.Vk=V2; frs.Qk=Q2;
+  }
+
+  // ROB entry
+  const re = s.rob.buf[ri];
+  re.busy=true; re.instr=instr.raw; re.dest=instr.dest;
+  re.value=null; re.ready=false; re.state='issue';
+
+  // Register renaming
+  if (instr.dest && s.regs[instr.dest]) s.regs[instr.dest].Qi = rtag;
+
+  instr.status='issued'; instr.issueCyc=s.cycle; instr.robTag=rtag;
+  s.iqPtr++;
+
+  log(s, `ISSUE  ${instr.raw}  → ${frs.name} [${rtag}]`, 'issue');
+  return true;
+}
+
+// ── EXECUTE ────────────────────────────────────────────────────
+function doExecute(s) {
+  const allRS = allRSList(s);
+  for (const rs of allRS) {
+    if (!rs.busy) continue;
+    if (rs.status === 'waiting' && rs.Qj===null && rs.Qk===null) {
+      rs.status = 'executing';
+      const instr = s.iq[rs.instrIdx];
+      if (instr && instr.status==='issued') {
+        instr.status='executing'; instr.execCyc=s.cycle;
+      }
+      const re = s.rob.buf[parseInt(rs.robTag.slice(3))];
+      if (re) re.state='execute';
+      log(s, `EXEC   ${rs.name} (${rs.op}) — ${rs.remaining} cycle(s)`, 'execute');
+    }
+    if (rs.status === 'executing') {
+      rs.remaining--;
+      if (rs.remaining <= 0) {
+        rs.result = compute(rs.op, rs.Vj, rs.Vk, s.iq[rs.instrIdx]?.offset, s.mem);
+        rs.status = 'completed';
+        // For stores write to memory now
+        if (rs.op === 'ST') {
+          const addr = ((rs.Vk??0) + (s.iq[rs.instrIdx]?.offset??0)) & 0xFF;
+          s.mem[addr] = rs.Vj ?? 0;
+        }
+        const re = s.rob.buf[parseInt(rs.robTag.slice(3))];
+        if (re) re.state='write';
+      }
+    }
+  }
+}
+
+// ── WRITE RESULT (CDB broadcast) ───────────────────────────────
+function doWrite(s) {
+  s.cdb.active = false;
+  const allRS = allRSList(s);
+  const done = allRS.filter(r => r.busy && r.status==='completed');
+  if (done.length === 0) return;
+
+  // Oldest ROB entry wins CDB
+  done.sort((a,b) => {
+    const ai = parseInt(a.robTag.slice(3));
+    const bi = parseInt(b.robTag.slice(3));
+    // Account for circular buffer wrap-around using distance from head
+    const distA = (ai - s.rob.head + CFG.ROB_SIZE) % CFG.ROB_SIZE;
+    const distB = (bi - s.rob.head + CFG.ROB_SIZE) % CFG.ROB_SIZE;
+    return distA - distB;
+  });
+
+  const rs = done[0];
+  const ri = parseInt(rs.robTag.slice(3));
+  s.cdb.active = true; s.cdb.tag = rs.robTag; s.cdb.value = rs.result;
+
+  const re = s.rob.buf[ri];
+  re.value = rs.result; re.ready = true; re.state='write';
+
+  // Broadcast to waiting RS
+  for (const other of allRS) {
+    if (!other.busy) continue;
+    if (other.Qj === rs.robTag) { other.Vj=rs.result; other.Qj=null; }
+    if (other.Qk === rs.robTag) { other.Vk=rs.result; other.Qk=null; }
+  }
+
+  const instr = s.iq[rs.instrIdx];
+  if (instr) { instr.status='written'; instr.writeCyc=s.cycle; }
+
+  log(s, `WRITE  CDB ← ${rs.robTag} = ${rs.result}  [${rs.op}@${rs.name}]`, 'write');
+
+  // Free RS
+  Object.assign(rs, {busy:false,op:null,Vj:null,Vk:null,Qj:null,Qk:null,
+    dest:null,remaining:0,result:null,status:'idle',instrIdx:-1,robTag:null});
+}
+
+// ── COMMIT ─────────────────────────────────────────────────────
+function doCommit(s) {
+  if (s.rob.cnt === 0) return;
+  const re = s.rob.buf[s.rob.head];
+  if (!re.busy || !re.ready) return;
+
+  const htag = `ROB${s.rob.head}`;
+
+  // Write to register file
+  if (re.dest && s.regs[re.dest]) {
+    const reg = s.regs[re.dest];
+    if (reg.Qi === htag) {
+      reg.value = re.value;
+      reg.Qi = null;
+      // Flash
+      WRITTEN_REGS.add(re.dest);
+      setTimeout(() => WRITTEN_REGS.delete(re.dest), 600);
+    }
+  }
+
+  // Mark instruction as committed
+  for (const instr of s.iq) {
+    if (instr.robTag === htag && instr.status === 'written') {
+      instr.status = 'committed'; instr.commitCyc = s.cycle; break;
+    }
+  }
+
+  log(s, `COMMIT ${re.instr}  [${htag}] → ${re.dest??'─'} = ${re.value}`, 'commit');
+  s.committed++;
+
+  // Clear ROB entry
+  Object.assign(re, {busy:false,instr:null,dest:null,value:null,ready:false,state:'empty'});
+  robAdvHead(s.rob);
+}
+
+// Tracking for write-flash animation
+const WRITTEN_REGS = new Set();
+
+function allRSList(s) {
+  return [...s.rs.ADD,...s.rs.MUL,...s.rs.LOAD,...s.rs.STORE];
+}
+
+// ── MAIN CYCLE ─────────────────────────────────────────────────
+function tick(s) {
+  if (s.done) return;
+  s.cycle++;
+
+  // Order matters: Commit → Write → Execute → Issue
+  doCommit(s);
+  doWrite(s);
+  doExecute(s);
+  doIssue(s);
+
+  // AI analysis
+  aiAnalyze(s);
+
+  // Done check
+  if (s.iqPtr >= s.iq.length && s.rob.cnt === 0 && s.cycle > 1) {
+    s.done = true;
+    log(s, '✓ ALL INSTRUCTIONS COMMITTED — Simulation complete', 'done');
+    if (SIM.running) stopSim();
+  }
+}
+
+// ── AI SCHEDULER ───────────────────────────────────────────────
+function aiAnalyze(s) {
+  const lookahead = s.iq.slice(s.iqPtr, s.iqPtr+4);
+  if (!lookahead.length) return;
+
+  const freeRS = {
+    ADD: s.rs.ADD.filter(r=>!r.busy).length,
+    MUL: s.rs.MUL.filter(r=>!r.busy).length,
+    LOAD: s.rs.LOAD.filter(r=>!r.busy).length,
+    STORE: s.rs.STORE.filter(r=>!r.busy).length
+  };
+
+  let msg = '';
+  const rawDeps = detectRawDeps(lookahead);
+  const next = lookahead[0];
+  const rsType = next ? rsTypeOf(next.op) : null;
+
+  if (rawDeps.length > 0) {
+    msg = `⚠ RAW hazard: ${rawDeps[0]}`;
+  } else if (rsType && freeRS[rsType] === 0) {
+    msg = `⚠ Structural hazard: ${rsType} RS full — stall imminent`;
+  } else if (s.rob.cnt >= CFG.ROB_SIZE) {
+    msg = `⚠ ROB full — issue will stall until commit`;
+  } else {
+    const score = schedScore(lookahead, s.regs);
+    const ooo = countOOO(s.iq);
+    msg = `✓ Pipeline healthy | Score:${score}/10 | OOO active:${ooo}`;
+  }
+
+  if (msg && (!s.aiLog.length || s.aiLog[s.aiLog.length-1].msg !== msg)) {
+    s.aiLog.push({c:s.cycle, msg});
+    if (s.aiLog.length > 15) s.aiLog.shift();
+  }
+}
+
+function detectRawDeps(instrs) {
+  const written = new Set(), deps = [];
+  for (const instr of instrs) {
+    if (instr.src1 && written.has(instr.src1)) deps.push(`${instr.op} needs ${instr.src1}`);
+    if (instr.src2 && written.has(instr.src2)) deps.push(`${instr.op} needs ${instr.src2}`);
+    if (instr.dest) written.add(instr.dest);
+  }
+  return deps;
+}
+
+function schedScore(instrs, regs) {
+  let s = 10;
+  const w = new Set();
+  for (const i of instrs) {
+    if (i.src1 && w.has(i.src1)) s -= 3;
+    if (i.src2 && w.has(i.src2)) s -= 2;
+    if (i.dest) w.add(i.dest);
+  }
+  return Math.max(0, s);
+}
+
+function countOOO(iq) {
+  return iq.filter(i => i.status==='executing'||i.status==='written').length;
+}
+
+// ── SIMULATION CONTROLLER ──────────────────────────────────────
+const SIM = { running:false, timer:null, speed:5 };
+
+function startSim() {
+  if (SIM.running) return;
+  SIM.running = true;
+  el('btnRun').disabled = true;
+  el('btnPause').disabled = false;
+  const delay = Math.max(80, 1100 - SIM.speed*100);
+  SIM.timer = setInterval(() => {
+    if (!STATE || STATE.done) { stopSim(); return; }
+    tick(STATE); render();
+  }, delay);
+}
+
+function stopSim() {
+  SIM.running = false;
+  clearInterval(SIM.timer); SIM.timer = null;
+  el('btnRun').disabled = false;
+  el('btnPause').disabled = true;
+}
+
+function stepSim() {
+  if (!STATE) initState();
+  tick(STATE); render();
+}
+
+function resetSim() {
+  stopSim();
+  const raws = STATE ? STATE.iq.map(i=>i.raw) : EXAMPLE;
+  STATE = makeState(raws);
+  render();
+}
+
+function initState() {
+  STATE = makeState(STATE ? STATE.iq.map(i=>i.raw) : EXAMPLE);
+}
+
+// ── RENDER ─────────────────────────────────────────────────────
+function render() {
+  if (!STATE) return;
+  const s = STATE;
+  el('cyc').textContent = s.cycle;
+  renderIQ(s);
+  renderRS(s);
+  renderRegs(s);
+  renderROB(s);
+  renderPipeline(s);
+  renderCDB(s);
+  renderDepGraph(s);
+  renderLog(s);
+  renderAI(s);
+  renderStats(s);
+}
+
+// ─ IQ ─
+function renderIQ(s) {
+  const list = el('iq-list');
+  list.innerHTML = '';
+  s.iq.forEach((instr,i) => {
+    const chip = document.createElement('div');
+    chip.className = 'iq-chip';
+    if (i < s.iqPtr) chip.classList.add('done');
+    else if (i === s.iqPtr) chip.classList.add('next');
+    const dep = hasDepOn(instr, i, s.iq);
+    if (dep && i >= s.iqPtr) chip.classList.add('dep');
+
+    chip.innerHTML = `<span class="iq-idx">#${i}</span>
+      <span class="iq-op">${instr.raw}</span>
+      ${dep ? '<span class="iq-dep-badge">⚠RAW</span>' : ''}
+      ${i >= s.iqPtr ? `<button class="iq-del" onclick="delInstr(${i})">×</button>` : ''}`;
+    list.appendChild(chip);
+  });
+  el('iq-badge').textContent = s.iq.length;
+}
+
+function hasDepOn(instr, idx, iq) {
+  for (let i=0;i<idx;i++) {
+    const p = iq[i];
+    if (p.status==='committed') continue;
+    if (p.dest && (p.dest===instr.src1 || p.dest===instr.src2)) return true;
+  }
+  return false;
+}
+
+// ─ RS ─
+function renderRS(s) {
+  renderRSGroup('rsAddBody', [...s.rs.ADD]);
+  renderRSGroup('rsMulBody', [...s.rs.MUL]);
+  renderRSGroup('rsLSBody',  [...s.rs.LOAD, ...s.rs.STORE]);
+}
+
+function renderRSGroup(tbodyId, rsList) {
+  const tb = el(tbodyId); tb.innerHTML='';
+  for (const rs of rsList) {
+    const tr = document.createElement('tr');
+    tr.className = rs.status;
+    tr.innerHTML = `
+      <td><span class="sdot ${rs.status}"></span>${rs.name}</td>
+      <td>${rs.busy?'●':'○'}</td>
+      <td>${fmt(rs.op)}</td>
+      <td>${fmt(rs.Vj)}</td>
+      <td>${fmt(rs.Vk)}</td>
+      <td>${fmt(rs.Qj)}</td>
+      <td>${fmt(rs.Qk)}</td>
+      <td>${fmt(rs.dest)}</td>
+      <td>${rs.busy&&rs.remaining>0?rs.remaining:'─'}</td>`;
+    tb.appendChild(tr);
+  }
+}
+
+// ─ Registers ─
+function renderRegs(s) {
+  const grid = el('regGrid'); grid.innerHTML='';
+  for (let i=0;i<CFG.NREGS;i++) {
+    const name=`R${i}`, reg=s.regs[name];
+    const cell = document.createElement('div');
+    cell.className = 'reg-cell';
+    if (reg.Qi) cell.classList.add('renamed');
+    if (WRITTEN_REGS.has(name)) cell.classList.add('written');
+    cell.innerHTML = `<div class="rname">${name}</div>
+      <div class="rval">${fmt(reg.value)}</div>
+      ${reg.Qi?`<div class="rqi">${reg.Qi}</div>`:''}`;
+    grid.appendChild(cell);
+  }
+}
+
+// ─ ROB ─
+function renderROB(s) {
+  const tb = el('robBody'); tb.innerHTML='';
+  for (let i=0;i<CFG.ROB_SIZE;i++) {
+    const e = s.rob.buf[i];
+    const isHead = s.rob.cnt>0 && i===s.rob.head;
+    const isTail = s.rob.cnt>0 && i===((s.rob.tail-1+CFG.ROB_SIZE)%CFG.ROB_SIZE);
+    const tr = document.createElement('tr');
+    tr.className = `rob-${e.state}`;
+    tr.innerHTML = `
+      <td>ROB${i}${isHead?'<span class="head-tag">HEAD</span>':''}${isTail&&s.rob.cnt>0?'<span class="tail-tag">TAIL</span>':''}</td>
+      <td>${e.busy?'●':'○'}</td>
+      <td>${fmt(e.instr)}</td>
+      <td>${fmt(e.dest)}</td>
+      <td>${e.value!==null?e.value:'─'}</td>
+      <td>${e.ready?'<span style="color:var(--green)">✓</span>':'<span style="color:var(--text-dim)">✗</span>'}</td>
+      <td>${e.state.toUpperCase()}</td>`;
+    tb.appendChild(tr);
+  }
+  el('robHead').textContent = s.rob.cnt > 0
+    ? `HEAD→ROB${s.rob.head}  TAIL→ROB${(s.rob.tail-1+CFG.ROB_SIZE)%CFG.ROB_SIZE}  [${s.rob.cnt}/${CFG.ROB_SIZE}]`
+    : 'EMPTY';
+}
+
+// ─ Pipeline ─
+function renderPipeline(s) {
+  const buckets = {issue:[],executing:[],written:[],committed:[]};
+  for (const i of s.iq) {
+    if (buckets[i.status]) buckets[i.status].push(i);
+  }
+  const map = {issue:'stgIssue',executing:'stgExec',written:'stgWrite',committed:'stgCommit'};
+  for (const [status, elId] of Object.entries(map)) {
+    const cont = el(elId); cont.innerHTML='';
+    for (const instr of buckets[status].slice(-3)) {
+      const tok = document.createElement('div');
+      tok.className = `ptok ${status}`;
+      tok.textContent = instr.op;
+      tok.title = instr.raw;
+      cont.appendChild(tok);
+    }
+  }
+}
+
+// ─ CDB ─
+let cdbTimer = null;
+function renderCDB(s) {
+  const row = el('cdbRow'), val = el('cdbVal');
+  if (s.cdb.active) {
+    val.textContent = `${s.cdb.tag} → ${s.cdb.value}`;
+    row.classList.add('active');
+    clearTimeout(cdbTimer);
+    cdbTimer = setTimeout(() => row.classList.remove('active'), 700);
+  } else {
+    val.textContent = 'IDLE';
+  }
+}
+
+// ─ Dependency Graph ─
+function renderDepGraph(s) {
+  const svg = el('depSvg');
+  const W = svg.clientWidth || 290, H = Math.max(svg.clientHeight || 300, 260);
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = '';
+
+  const instrs = s.iq.slice(0,9);
+  if (!instrs.length) return;
+
+  const NW=110, NH=34, COLS=2;
+  const rows = Math.ceil(instrs.length/COLS);
+  const cGap = (W - NW*COLS) / (COLS+1);
+  const rGap = Math.min(14, (H - NH*rows - 10) / (rows+1));
+
+  const pos = instrs.map((_, i) => {
+    const c = i%COLS, r = Math.floor(i/COLS);
+    return {
+      x: cGap + c*(NW+cGap) + NW/2,
+      y: 10 + rGap + r*(NH+rGap) + NH/2
+    };
+  });
+
+  // Defs
+  const defs = ns('defs');
+  // Arrow marker
+  const mkr = ns('marker');
+  mkr.setAttribute('id','arw');mkr.setAttribute('markerWidth','7');
+  mkr.setAttribute('markerHeight','5');mkr.setAttribute('refX','7');
+  mkr.setAttribute('refY','2.5');mkr.setAttribute('orient','auto');
+  const poly = ns('polygon');
+  poly.setAttribute('points','0 0,7 2.5,0 5');
+  poly.setAttribute('fill','rgba(255,114,53,.75)');
+  mkr.appendChild(poly); defs.appendChild(mkr);
+  // Glow filter
+  const flt = ns('filter');flt.setAttribute('id','glow');
+  const blur = ns('feGaussianBlur');blur.setAttribute('stdDeviation','2.5');blur.setAttribute('result','b');
+  const merge = ns('feMerge');
+  [ns('feMergeNode'),ns('feMergeNode')].forEach((mn,j)=>{
+    if(j===0) mn.setAttribute('in','b'); else mn.setAttribute('in','SourceGraphic');
+    merge.appendChild(mn);
+  });
+  flt.appendChild(blur);flt.appendChild(merge);
+  defs.appendChild(flt);
+  svg.appendChild(defs);
+
+  // Edges
+  for (let j=0;j<instrs.length;j++) {
+    for (let i=0;i<j;i++) {
+      const src=instrs[i], dst=instrs[j];
+      const dep = src.dest && (src.dest===dst.src1||src.dest===dst.src2);
+      if (!dep) continue;
+      const p1=pos[i], p2=pos[j];
+      const cx = p1.x===p2.x ? p1.x+38 : (p1.x+p2.x)/2;
+      const cy = (p1.y+p2.y)/2;
+      const path = ns('path');
+      path.setAttribute('d',`M${p1.x} ${p1.y+NH/2} Q${cx} ${cy} ${p2.x} ${p2.y-NH/2}`);
+      path.setAttribute('fill','none');
+      path.setAttribute('stroke', src.status==='committed'?'rgba(0,255,136,.3)':'rgba(255,114,53,.6)');
+      path.setAttribute('stroke-width','1.5');
+      path.setAttribute('marker-end','url(#arw)');
+      path.setAttribute('stroke-dasharray', src.status==='committed'?'none':'5 3');
+      svg.appendChild(path);
+
+      const lbl = ns('text');
+      lbl.setAttribute('x',cx+4);lbl.setAttribute('y',cy-3);
+      lbl.setAttribute('text-anchor','middle');
+      lbl.setAttribute('fill','rgba(255,114,53,.65)');
+      lbl.setAttribute('font-size','7.5');
+      lbl.setAttribute('font-family','Share Tech Mono');
+      lbl.textContent = `RAW:${src.dest}`;
+      svg.appendChild(lbl);
+    }
+  }
+
+  // Nodes
+  const STATUS_COLORS = {
+    queued:   {fill:'rgba(0,200,255,.07)',stroke:'rgba(0,200,255,.35)',text:'rgba(0,200,255,.85)'},
+    issued:   {fill:'rgba(0,200,255,.15)',stroke:'#00c8ff',text:'#00c8ff'},
+    executing:{fill:'rgba(255,114,53,.2)',stroke:'#ff7235',text:'#ff7235',glow:true},
+    written:  {fill:'rgba(255,213,79,.15)',stroke:'#ffd54f',text:'#ffd54f'},
+    committed:{fill:'rgba(0,255,136,.12)',stroke:'#00ff88',text:'#00ff88'},
+  };
+
+  instrs.forEach((instr, i) => {
+    const p = pos[i];
+    const col = STATUS_COLORS[instr.status] || STATUS_COLORS.queued;
+
+    const g = ns('g');
+
+    const rect = ns('rect');
+    rect.setAttribute('x', p.x-NW/2);rect.setAttribute('y', p.y-NH/2);
+    rect.setAttribute('width',NW);rect.setAttribute('height',NH);
+    rect.setAttribute('rx','4');
+    rect.setAttribute('fill', col.fill);
+    rect.setAttribute('stroke', col.stroke);
+    rect.setAttribute('stroke-width','1.5');
+    if (col.glow) rect.setAttribute('filter','url(#glow)');
+    g.appendChild(rect);
+
+    const t1 = ns('text');
+    t1.setAttribute('x',p.x);t1.setAttribute('y',p.y-3);
+    t1.setAttribute('text-anchor','middle');
+    t1.setAttribute('fill',col.text);
+    t1.setAttribute('font-size','9.5');t1.setAttribute('font-family','Share Tech Mono');
+    t1.textContent = instr.raw.length>15 ? instr.raw.slice(0,15)+'…' : instr.raw;
+    g.appendChild(t1);
+
+    const t2 = ns('text');
+    t2.setAttribute('x',p.x);t2.setAttribute('y',p.y+11);
+    t2.setAttribute('text-anchor','middle');
+    t2.setAttribute('fill','rgba(255,255,255,.3)');
+    t2.setAttribute('font-size','7.5');t2.setAttribute('font-family','Share Tech Mono');
+    t2.textContent = instr.status.toUpperCase();
+    g.appendChild(t2);
+
+    svg.appendChild(g);
+  });
+}
+
+// ─ Log ─
+function renderLog(s) {
+  const cont = el('logLines');
+  cont.innerHTML = '';
+  s.log.slice(-22).forEach(entry => {
+    const d = document.createElement('div');
+    d.className = 'log-line';
+    d.innerHTML = `<span class="lc lt-${entry.type}">[C${entry.c}]</span> <span class="lt-${entry.type}">${entry.msg}</span>`;
+    cont.appendChild(d);
+  });
+  cont.scrollTop = cont.scrollHeight;
+}
+
+// ─ AI ─
+function renderAI(s) {
+  const cont = el('aiLog');
+  cont.innerHTML = '';
+  s.aiLog.slice(-8).forEach(e => {
+    const d = document.createElement('div');
+    d.className = 'ai-line';
+    d.innerHTML = `<span style="color:var(--text-dim);font-size:9px">[C${e.c}]</span> ${e.msg}`;
+    cont.appendChild(d);
+  });
+}
+
+// ─ Stats ─
+function renderStats(s) {
+  const ipc = s.cycle > 0 ? (s.committed/s.cycle).toFixed(2) : '0.00';
+  el('sIPC').textContent = ipc;
+  el('sCom').textContent = s.committed;
+  el('sStall').textContent = s.stalls;
+  const allRS = allRSList(s);
+  el('sRS').textContent = Math.round(allRS.filter(r=>r.busy).length/allRS.length*100)+'%';
+  el('sROB').textContent = Math.round(s.rob.cnt/CFG.ROB_SIZE*100)+'%';
+}
+
+// ── INSTRUCTION MANAGEMENT ─────────────────────────────────────
+const EXAMPLE = [
+  'LD R1 0(R2)', 'LD R3 0(R4)', 'ADD R5 R1 R3',
+  'MUL R6 R5 R7', 'SUB R8 R6 R9'
+];
+
+function addInstr(raw) {
+  if (!raw.trim()) return;
+  try { parse(raw); } catch(e) { return; }
+  if (!STATE) STATE = makeState([]);
+  STATE.iq.push({
+    ...parse(raw), raw:raw.trim(), idx:STATE.iq.length,
+    status:'queued', issueCyc:null, execCyc:null, writeCyc:null, commitCyc:null, robTag:null
+  });
+  render();
+}
+
+function delInstr(idx) {
+  if (!STATE) return;
+  if (idx < STATE.iqPtr) return;
+  STATE.iq.splice(idx,1);
+  STATE.iq.forEach((x,i)=>x.idx=i);
+  render();
+}
+
+function randomInstr() {
+  const ops = ['ADD','SUB','MUL','LD','ADD','ADD'];
+  const op = ops[Math.floor(Math.random()*ops.length)];
+  const r = () => Math.floor(Math.random()*10);
+  if (op==='LD') return `LD R${r()} ${Math.floor(Math.random()*8)*4}(R${r()})`;
+  return `${op} R${r()} R${r()} R${r()}`;
+}
+
+// ── EVENT BINDINGS ─────────────────────────────────────────────
+el('btnRun').addEventListener('click', startSim);
+el('btnPause').addEventListener('click', stopSim);
+el('btnStep').addEventListener('click', stepSim);
+el('btnReset').addEventListener('click', resetSim);
+
+el('speedSlider').addEventListener('input', function() {
+  SIM.speed = +this.value;
+  el('speedVal').textContent = SIM.speed;
+  if (SIM.running) { stopSim(); startSim(); }
+});
+
+el('btnAdd').addEventListener('click', () => {
+  const inp = el('iqInp');
+  addInstr(inp.value); inp.value = '';
+});
+
+el('iqInp').addEventListener('keydown', e => {
+  if (e.key==='Enter') { addInstr(e.target.value); e.target.value=''; }
+});
+
+el('btnRand').addEventListener('click', () => addInstr(randomInstr()));
+
+el('btnExample').addEventListener('click', () => {
+  stopSim();
+  STATE = makeState(EXAMPLE);
+  render();
+});
+
+// ── THEME TOGGLE ───────────────────────────────────────────────
+(function() {
+  const btn = el('themeToggle');
+  const root = document.documentElement;
+  let isDark = true;
+
+  btn.addEventListener('click', () => {
+    isDark = !isDark;
+    root.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    btn.textContent = isDark ? '☀ LIGHT' : '☾ DARK';
+  });
+})();
+
+// ── INIT ───────────────────────────────────────────────────────
+let STATE = makeState(EXAMPLE);
+render();
+</script>
+</body>
+</html>
